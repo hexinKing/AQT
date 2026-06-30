@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AQT - A股量化监控</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#333}
+.header{background:#1a1a2e;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:20px}
+.header .user-info{font-size:14px;opacity:.8}
+.btn{padding:6px 16px;border:none;border-radius:4px;cursor:pointer;font-size:14px}
+.btn-primary{background:#4361ee;color:#fff}
+.btn-primary:hover{background:#3a56d4}
+.btn-danger{background:#e63946;color:#fff}
+.btn-sm{padding:4px 10px;font-size:12px}
+.tabs{display:flex;gap:0;background:#fff;border-bottom:2px solid #e0e0e0;padding:0 24px}
+.tab{padding:12px 24px;cursor:pointer;border:none;background:none;font-size:14px;color:#666;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab.active{color:#4361ee;border-bottom-color:#4361ee}
+.content{max-width:1100px;margin:24px auto;padding:0 24px}
+.card{background:#fff;border-radius:8px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card h3{font-size:16px;margin-bottom:12px;color:#1a1a2e}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #eee}
+th{color:#666;font-weight:600;font-size:13px}
+.green{color:#16a34a}.red{color:#dc2626}
+.badge{padding:2px 8px;border-radius:10px;font-size:12px}
+.badge-buy{background:#dcfce7;color:#16a34a}.badge-sell{background:#fee2e2;color:#dc2626}
+.logout-btn{background:none;border:1px solid #fff;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer}
+.logout-btn:hover{background:rgba(255,255,255,.1)}
+input,select{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px}
+label{display:block;margin-bottom:4px;font-size:13px;color:#666}
+.form-group{margin-bottom:12px}
+.flex{display:flex;gap:12px;align-items:center}
+.flex-wrap{flex-wrap:wrap}
+.mb-8{margin-bottom:8px}.mt-16{margin-top:16px}
+.strategy-row{display:grid;grid-template-columns:180px 1fr 100px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.strategy-row:last-child{border-bottom:none}
+.strategy-name{font-weight:600;font-size:14px}
+.strategy-params{display:flex;gap:8px;flex-wrap:wrap}
+.param-input{width:80px;padding:4px 8px;font-size:13px}
+.toggle{position:relative;display:inline-block;width:44px;height:24px}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:.2s}
+.slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+input:checked+.slider{background:#4361ee}
+input:checked+.slider:before{transform:translateX(20px)}
+.signal-row.unread{background:#fef9c3}
+.pnl-summary{display:flex;gap:24px;margin-bottom:16px}
+.pnl-item{padding:12px 20px;background:#f8fafc;border-radius:8px}
+.pnl-value{font-size:24px;font-weight:700}
+#login-overlay{position:fixed;inset:0;background:#1a1a2e;display:flex;justify-content:center;align-items:center;z-index:999}
+.login-box{background:#fff;padding:32px;border-radius:12px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.login-box h2{text-align:center;margin-bottom:24px;color:#1a1a2e}
+.notify{position:fixed;top:16px;right:16px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;max-width:360px}
+.notify-success{background:#16a34a}
+.notify-error{background:#dc2626}
+.hidden{display:none!important}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.unread-dot{display:inline-block;width:8px;height:8px;background:#e63946;border-radius:50%;margin-left:4px}
+</style>
+</head>
+<body>
+
+<div id="login-overlay">
+  <div class="login-box">
+    <h2>AQT · A股量化监控</h2>
+    <form id="login-form">
+      <div class="form-group"><label>用户名</label><input type="text" id="login-username" required></div>
+      <div class="form-group"><label>密码</label><input type="password" id="login-password" required></div>
+      <div class="form-group hidden" id="email-group"><label>邮箱 (通知用)</label><input type="email" id="login-email"></div>
+      <div class="flex" style="gap:8px;margin-top:16px">
+        <button type="submit" class="btn btn-primary" style="flex:1" id="btn-login">登录</button>
+        <button type="button" class="btn" style="flex:1;background:#e5e7eb" id="btn-register-mode">注册</button>
+      </div>
+    </form>
+    <div style="text-align:center;margin-top:8px;font-size:12px;color:#999" id="login-hint">没有账号？点击"注册"</div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="header">
+    <h1>AQT · A股量化监控</h1>
+    <div class="flex" style="gap:16px;align-items:center">
+      <span class="user-info" id="header-user"></span>
+      <button class="btn btn-sm logout-btn" onclick="logout()">退出</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('dashboard')">📊 看板</button>
+    <button class="tab" onclick="switchTab('strategies')">⚙️ 策略管理</button>
+    <button class="tab" onclick="switchTab('positions')">💼 持仓管理</button>
+    <button class="tab" onclick="switchTab('settings')">🔧 设置</button>
+  </div>
+
+  <div class="content">
+
+    <!-- Dashboard Tab -->
+    <div id="tab-dashboard" class="tab-content active">
+      <div class="card">
+        <div class="flex" style="justify-content:space-between">
+          <h3>持仓盈亏</h3>
+          <button class="btn btn-primary btn-sm" onclick="manualCheck()">立即检查信号</button>
+        </div>
+        <div id="pnl-summary"></div>
+        <table>
+          <thead><tr><th>股票</th><th>持仓</th><th>成本</th><th>现价</th><th>市值</th><th>盈亏</th><th>盈亏%</th></tr></thead>
+          <tbody id="positions-table"></tbody>
+        </table>
+        <div id="no-positions" class="hidden" style="padding:20px;text-align:center;color:#999">暂无持仓，先在「持仓管理」添加</div>
+      </div>
+
+      <div class="card">
+        <div class="flex" style="justify-content:space-between">
+          <h3>交易信号 <span class="unread-dot hidden" id="unread-indicator"></span></h3>
+          <button class="btn btn-sm" onclick="markAllRead()">全部已读</button>
+        </div>
+        <div id="signals-list" style="max-height:400px;overflow-y:auto">
+          <div style="padding:20px;text-align:center;color:#999">暂无信号</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>自选股行情</h3>
+        <table>
+          <thead><tr><th>代码</th><th>名称</th><th>现价</th><th>涨跌幅</th><th>启用的策略</th></tr></thead>
+          <tbody id="watchlist-quotes"></tbody>
+        </table>
+        <div id="no-watchlist" class="hidden" style="padding:20px;text-align:center;color:#999">暂无自选，先在「策略管理」添加</div>
+      </div>
+    </div>
+
+    <!-- Strategies Tab -->
+    <div id="tab-strategies" class="tab-content">
+      <div class="card">
+        <h3>添加自选股</h3>
+        <div class="flex" style="gap:8px">
+          <input type="text" id="new-symbol" placeholder="股票代码 (如 000001)" style="width:160px">
+          <button class="btn btn-primary" onclick="addWatchlist()">添加</button>
+        </div>
+      </div>
+      <div id="strategy-configs"></div>
+    </div>
+
+    <!-- Positions Tab -->
+    <div id="tab-positions" class="tab-content">
+      <div class="card">
+        <h3>添加持仓</h3>
+        <div class="flex" style="gap:8px;flex-wrap:wrap">
+          <input type="text" id="pos-symbol" placeholder="股票代码" style="width:120px">
+          <input type="number" id="pos-shares" placeholder="股数" style="width:100px">
+          <input type="number" id="pos-cost" placeholder="成本价" style="width:100px" step="0.01">
+          <input type="text" id="pos-note" placeholder="备注" style="width:150px">
+          <button class="btn btn-primary" onclick="addPosition()">添加</button>
+        </div>
+      </div>
+      <div id="positions-management"></div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tab-content">
+      <div class="card">
+        <h3>通知邮箱</h3>
+        <div class="form-group"><label>邮箱地址</label><input type="email" id="set-email"></div>
+        <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+      </div>
+      <div class="card">
+        <h3>SMTP 配置</h3>
+        <div class="form-group"><label>SMTP 服务器</label><input type="text" id="set-smtp-host"></div>
+        <div class="form-group"><label>端口</label><input type="number" id="set-smtp-port"></div>
+        <div class="form-group"><label>发件邮箱</label><input type="email" id="set-smtp-user"></div>
+        <div class="form-group"><label>SMTP 授权码</label><input type="password" id="set-smtp-pass"></div>
+        <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = '';
+let token = localStorage.getItem('aqt_token');
+let isRegisterMode = false;
+
+// ── Auth ──
+function setAuth(t, username) {
+  token = t;
+  localStorage.setItem('aqt_token', token);
+  document.getElementById('login-overlay').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('header-user').textContent = username;
+  loadDashboard();
+}
+
+document.getElementById('btn-register-mode').onclick = () => {
+  isRegisterMode = !isRegisterMode;
+  document.getElementById('email-group').classList.toggle('hidden', !isRegisterMode);
+  document.getElementById('btn-login').textContent = isRegisterMode ? '注册' : '登录';
+  document.getElementById('btn-register-mode').textContent = isRegisterMode ? '返回登录' : '注册';
+  document.getElementById('login-hint').textContent = isRegisterMode ? '已有账号？点击"返回登录"' : '没有账号？点击"注册"';
+};
+
+document.getElementById('login-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  const email = document.getElementById('login-email').value;
+  const url = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+  const body = isRegisterMode ? {username, password, email} : {username, password};
+  try {
+    const res = await fetch(API + url, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.detail || json.error || 'Failed');
+    setAuth(json.data.token, json.data.username);
+  } catch(err) { notify(err.message, 'error'); }
+};
+
+if (token) {
+  // Validate token by fetching settings
+  fetch(API + '/api/settings', {headers:{'Authorization':'Bearer '+token}})
+    .then(r => r.json())
+    .then(j => {
+      if (j.ok) {
+        document.getElementById('login-overlay').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        document.getElementById('header-user').textContent = j.data.email;
+        loadDashboard();
+      } else { localStorage.removeItem('aqt_token'); }
+    })
+    .catch(() => { localStorage.removeItem('aqt_token'); });
+}
+
+function logout() {
+  localStorage.removeItem('aqt_token');
+  token = null;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-overlay').classList.remove('hidden');
+}
+
+// ── Tabs ──
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'strategies') loadStrategies();
+  if (name === 'positions') loadPositions();
+  if (name === 'settings') loadSettings();
+}
+
+// ── API helpers ──
+async function api(url, opts={}) {
+  const res = await fetch(API + url, {
+    ...opts,
+    headers:{'Authorization':'Bearer '+token, 'Content-Type':'application/json', ...opts.headers}
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.detail || json.error || 'Error');
+  return json;
+}
+
+function notify(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = 'notify notify-'+type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Format helpers ──
+function fmt(n) { return n == null || isNaN(n) ? '-' : Number(n).toFixed(2); }
+function pct(n) { return n == null || isNaN(n) ? '-' : (n>0?'+':'') + n.toFixed(2) + '%'; }
+function clr(n) { return n > 0 ? 'green' : n < 0 ? 'red' : ''; }
+
+// ── Dashboard ──
+async function loadDashboard() {
+  try {
+    const res = await api('/api/dashboard');
+    const d = res.data;
+
+    // P&L summary
+    document.getElementById('pnl-summary').innerHTML = `
+      <div class="pnl-item"><div style="font-size:12px;color:#666">总浮动盈亏</div>
+        <div class="pnl-value ${clr(d.total_pnl)}">${d.total_pnl >= 0 ? '+' : ''}${fmt(d.total_pnl)}</div></div>
+      <div class="pnl-item"><div style="font-size:12px;color:#666">未读信号</div>
+        <div class="pnl-value">${d.unread_count}</div></div>`;
+
+    // Positions
+    const posBody = document.getElementById('positions-table');
+    const noPos = document.getElementById('no-positions');
+    if (d.positions.length === 0) {
+      posBody.innerHTML = ''; noPos.classList.remove('hidden');
+    } else {
+      noPos.classList.add('hidden');
+      posBody.innerHTML = d.positions.map(p => `
+        <tr>
+          <td><strong>${p.symbol}</strong></td>
+          <td>${p.shares}股</td>
+          <td>${fmt(p.avg_cost)}</td>
+          <td>${fmt(p.last_price)}</td>
+          <td>${fmt(p.market_value)}</td>
+          <td class="${clr(p.unrealized_pnl)}">${p.unrealized_pnl >= 0 ? '+' : ''}${fmt(p.unrealized_pnl)}</td>
+          <td class="${clr(p.pnl_pct)}">${pct(p.pnl_pct)}</td>
+        </tr>`).join('');
+    }
+
+    // Signals
+    const sigDiv = document.getElementById('signals-list');
+    if (d.signals.length === 0) {
+      sigDiv.innerHTML = '<div style="padding:20px;text-align:center;color:#999">暂无信号</div>';
+    } else {
+      sigDiv.innerHTML = d.signals.map(s => `
+        <div class="flex signal-row ${s.is_read===0?'unread':''}" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0">
+          <span style="font-size:12px;color:#999">${new Date(s.created_at).toLocaleString('zh-CN')}</span>
+          <span><strong>${s.symbol}</strong></span>
+          <span style="font-size:12px;color:#666">${s.strategy}</span>
+          <span class="badge ${s.direction==='BUY'?'badge-buy':'badge-sell'}">${s.direction}</span>
+          <span>${s.price ? fmt(s.price) : '-'}</span>
+          <span style="font-size:13px;flex:1;margin-left:8px">${s.reason}</span>
+          ${s.is_read===0 ? `<button class="btn btn-sm" onclick="markRead(${s.id})">标记已读</button>` : '<span style="font-size:12px;color:#999">已读</span>'}
+        </div>`).join('');
+    }
+
+    document.getElementById('unread-indicator').classList.toggle('hidden', d.unread_count === 0);
+
+    // Watchlist quotes
+    const wqBody = document.getElementById('watchlist-quotes');
+    const noWl = document.getElementById('no-watchlist');
+    if (d.watchlist.length === 0) {
+      wqBody.innerHTML = ''; noWl.classList.remove('hidden');
+    } else {
+      noWl.classList.add('hidden');
+      wqBody.innerHTML = d.watchlist.map(w => {
+        const strategies = JSON.parse(w.strategy_params || '{}');
+        const enabled = Object.entries(strategies).filter(([_,v]) => v.enabled).map(([k]) => k).join(', ') || '无';
+        return `<tr>
+          <td>${w.symbol}</td><td>${w.name}</td>
+          <td>${fmt(w.last_price)}</td>
+          <td class="${clr(w.change_pct)}">${pct(w.change_pct)}</td>
+          <td style="font-size:12px">${enabled}</td>
+        </tr>`;
+      }).join('');
+    }
+  } catch(err) { notify('加载看板失败: '+err.message, 'error'); }
+}
+
+async function markRead(id) {
+  await api('/api/signals/'+id+'/read', {method:'PUT'});
+  loadDashboard();
+}
+
+async function markAllRead() {
+  await api('/api/signals/read-all', {method:'PUT'});
+  loadDashboard();
+}
+
+async function manualCheck() {
+  try {
+    const res = await api('/api/check-now', {method:'POST'});
+    const count = res.data.new_signals.length;
+    notify(count > 0 ? `发现 ${count} 个新信号!` : '没有新信号', count > 0 ? 'success' : 'success');
+    loadDashboard();
+  } catch(err) { notify('检查失败: '+err.message, 'error'); }
+}
+
+// ── Strategies ──
+async function loadStrategies() {
+  const res = await api('/api/watchlist');
+  const div = document.getElementById('strategy-configs');
+  if (res.data.length === 0) {
+    div.innerHTML = '<div class="card"><div style="text-align:center;color:#999;padding:20px">暂未添加自选股，请先添加</div></div>';
+    return;
+  }
+  div.innerHTML = res.data.map(w => {
+    const params = JSON.parse(w.strategy_params || '{}');
+    return `<div class="card">
+      <div class="flex" style="justify-content:space-between;margin-bottom:12px">
+        <h3>${w.symbol} ${w.name}</h3>
+        <button class="btn btn-danger btn-sm" onclick="deleteWatchlist(${w.id})">删除</button>
+      </div>
+      ${['ma_cross','grid','trailing_stop'].map(name => {
+        const s = params[name] || {};
+        const labels = {
+          ma_cross: '双均线交叉',
+          grid: '网格交易',
+          trailing_stop: '移动止损'
+        };
+        let paramInputs = '';
+        if (name === 'ma_cross') {
+          paramInputs = `
+            <input class="param-input" value="${s.short_window||5}" data-key="short_window" type="number" placeholder="短周期">
+            <input class="param-input" value="${s.long_window||20}" data-key="long_window" type="number" placeholder="长周期">`;
+        } else if (name === 'grid') {
+          paramInputs = `
+            <input class="param-input" value="${s.grid_pct||0.03}" data-key="grid_pct" type="number" step="0.01" placeholder="网格%">
+            <input class="param-input" value="${s.base_price||0}" data-key="base_price" type="number" step="0.01" placeholder="基准价">`;
+        } else if (name === 'trailing_stop') {
+          paramInputs = `
+            <input class="param-input" value="${s.trail_pct||0.05}" data-key="trail_pct" type="number" step="0.01" placeholder="回撤%">
+            <input class="param-input" value="${s.entry_price||0}" data-key="entry_price" type="number" step="0.01" placeholder="入场价">`;
+        }
+        return `<div class="strategy-row">
+          <label class="strategy-name"><label class="toggle">
+            <input type="checkbox" ${s.enabled?'checked':''} onchange="toggleStrategy(${w.id},'${name}',this.checked)">
+            <span class="slider"></span>
+          </label> ${labels[name]}</label>
+          <div class="strategy-params">${paramInputs}</div>
+          <button class="btn btn-sm btn-primary" onclick="saveStrategy(${w.id},'${name}',this)">保存</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+async function addWatchlist() {
+  const symbol = document.getElementById('new-symbol').value.trim();
+  if (!symbol) return notify('请输入股票代码', 'error');
+  try {
+    await api('/api/watchlist', {method:'POST', body:JSON.stringify({symbol})});
+    document.getElementById('new-symbol').value = '';
+    notify('添加成功');
+    loadStrategies();
+  } catch(err) { notify(err.message, 'error'); }
+}
+
+async function deleteWatchlist(id) {
+  await api('/api/watchlist/'+id, {method:'DELETE'});
+  notify('已删除');
+  loadStrategies();
+}
+
+async function toggleStrategy(watchlistId, name, enabled) {
+  const res = await api('/api/watchlist');
+  const item = res.data.find(w => w.id === watchlistId);
+  if (!item) return;
+  const strategies = JSON.parse(item.strategy_params || '{}');
+  if (!strategies[name]) strategies[name] = {};
+  strategies[name].enabled = enabled;
+  await api('/api/watchlist/'+watchlistId+'/strategies', {method:'PUT', body:JSON.stringify(strategies)});
+}
+
+async function saveStrategy(watchlistId, name, btn) {
+  const res = await api('/api/watchlist');
+  const item = res.data.find(w => w.id === watchlistId);
+  if (!item) return;
+  const strategies = JSON.parse(item.strategy_params || '{}');
+  if (!strategies[name]) strategies[name] = {};
+  const row = btn.closest('.strategy-row');
+  row.querySelectorAll('.param-input').forEach(inp => {
+    strategies[name][inp.dataset.key] = parseFloat(inp.value) || 0;
+  });
+  await api('/api/watchlist/'+watchlistId+'/strategies', {method:'PUT', body:JSON.stringify(strategies)});
+  notify('策略参数已保存');
+}
+
+// ── Positions ──
+async function loadPositions() {
+  const res = await api('/api/positions');
+  const div = document.getElementById('positions-management');
+  if (res.data.length === 0) {
+    div.innerHTML = '<div class="card"><div style="text-align:center;color:#999;padding:20px">暂无持仓</div></div>';
+    return;
+  }
+  div.innerHTML = res.data.map(p => `
+    <div class="card">
+      <div class="flex" style="justify-content:space-between">
+        <h3>${p.symbol}</h3>
+        <button class="btn btn-danger btn-sm" onclick="deletePosition(${p.id})">删除</button>
+      </div>
+      <div class="flex" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+        <input type="number" value="${p.shares}" id="edit-shares-${p.id}" style="width:100px" placeholder="股数">
+        <input type="number" value="${p.avg_cost}" id="edit-cost-${p.id}" style="width:100px" step="0.01" placeholder="成本">
+        <input type="text" value="${p.note||''}" id="edit-note-${p.id}" style="width:200px" placeholder="备注">
+        <button class="btn btn-sm btn-primary" onclick="updatePosition(${p.id})">更新</button>
+      </div>
+    </div>`).join('');
+}
+
+async function addPosition() {
+  const symbol = document.getElementById('pos-symbol').value.trim();
+  const shares = parseInt(document.getElementById('pos-shares').value);
+  const avg_cost = parseFloat(document.getElementById('pos-cost').value);
+  const note = document.getElementById('pos-note').value;
+  if (!symbol || !shares || !avg_cost) return notify('请填写完整', 'error');
+  await api('/api/positions', {method:'POST', body:JSON.stringify({symbol, shares, avg_cost, note})});
+  document.getElementById('pos-symbol').value = '';
+  document.getElementById('pos-shares').value = '';
+  document.getElementById('pos-cost').value = '';
+  document.getElementById('pos-note').value = '';
+  notify('添加成功');
+  loadPositions();
+}
+
+async function updatePosition(id) {
+  const shares = parseInt(document.getElementById('edit-shares-'+id).value);
+  const avg_cost = parseFloat(document.getElementById('edit-cost-'+id).value);
+  const note = document.getElementById('edit-note-'+id).value;
+  await api('/api/positions/'+id, {method:'PUT', body:JSON.stringify({shares, avg_cost, note})});
+  notify('已更新');
+}
+
+async function deletePosition(id) {
+  await api('/api/positions/'+id, {method:'DELETE'});
+  notify('已删除');
+  loadPositions();
+}
+
+// ── Settings ──
+async function loadSettings() {
+  const res = await api('/api/settings');
+  document.getElementById('set-email').value = res.data.email || '';
+  document.getElementById('set-smtp-host').value = res.data.smtp_host || '';
+  document.getElementById('set-smtp-port').value = res.data.smtp_port || 587;
+  document.getElementById('set-smtp-user').value = res.data.smtp_user || '';
+  document.getElementById('set-smtp-pass').value = '';
+}
+
+async function saveSettings() {
+  const body = {
+    email: document.getElementById('set-email').value,
+    smtp_host: document.getElementById('set-smtp-host').value,
+    smtp_port: parseInt(document.getElementById('set-smtp-port').value) || 587,
+    smtp_user: document.getElementById('set-smtp-user').value,
+  };
+  const pass = document.getElementById('set-smtp-pass').value;
+  if (pass) body.smtp_password = pass;
+  await api('/api/settings', {method:'PUT', body:JSON.stringify(body)});
+  notify('设置已保存');
+}
+
+// ── Polling ──
+setInterval(() => {
+  if (token && !document.getElementById('login-overlay').classList.contains('hidden') === false) {
+    const dashTab = document.getElementById('tab-dashboard');
+    if (dashTab.classList.contains('active')) loadDashboard();
+  }
+}, 30000);
+</script>
+</body>
+</html>
