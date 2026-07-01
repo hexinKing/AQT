@@ -50,7 +50,7 @@ input:checked+.slider:before{transform:translateX(20px)}
 .pnl-summary{display:flex;gap:24px;margin-bottom:16px}
 .pnl-item{padding:12px 20px;background:#f8fafc;border-radius:8px}
 .pnl-value{font-size:24px;font-weight:700}
-#login-overlay{position:fixed;inset:0;background:#1a1a2e;display:flex;justify-content:center;align-items:center;z-index:999}
+#login-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:#1a1a2e;display:flex;justify-content:center;align-items:center;z-index:999}
 .login-box{background:#fff;padding:32px;border-radius:12px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,.3)}
 .login-box h2{text-align:center;margin-bottom:24px;color:#1a1a2e}
 .notify{position:fixed;top:16px;right:16px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;max-width:360px}
@@ -60,9 +60,30 @@ input:checked+.slider:before{transform:translateX(20px)}
 .tab-content{display:none}
 .tab-content.active{display:block}
 .unread-dot{display:inline-block;width:8px;height:8px;background:#e63946;border-radius:50%;margin-left:4px}
+.loading-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(255,255,255,.7);display:flex;justify-content:center;align-items:center;z-index:9998}
+.spinner{width:40px;height:40px;border:4px solid #eee;border-top:4px solid #4361ee;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.warning-box{background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 14px;font-size:13px;color:#856404;margin-bottom:12px}
+.error-text{color:#dc2626;font-size:12px;margin-top:2px}
+.spark-col{width:110px}
+.spark-col canvas{cursor:pointer;border-radius:4px;transition:box-shadow .15s}
+.spark-col canvas:hover{box-shadow:0 0 0 2px #4361ee}
+.modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.5);display:flex;justify-content:center;align-items:center;z-index:9999}
+.modal-card{background:#fff;border-radius:12px;padding:24px;width:820px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:#999;padding:0;line-height:1}
+.modal-close:hover{color:#333}
+.kl-canvas{display:block;margin:0 auto}
+.kl-legend{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:12px;color:#666}
+.kl-tab{padding:4px 14px;border:none;background:transparent;font-size:13px;cursor:pointer;border-radius:4px;color:#666}
+.kl-tab.active{background:#4361ee;color:#fff}
+.wl-extra{font-size:11px;color:#999;line-height:1.4}
 </style>
 </head>
 <body>
+<noscript><div style="background:#dc2626;color:#fff;padding:12px;text-align:center">您的浏览器禁用了 JavaScript，请启用后刷新页面。</div></noscript>
+
+<div id="loading-overlay" class="loading-overlay hidden"><div class="spinner"></div></div>
 
 <div id="login-overlay">
   <div class="login-box">
@@ -90,10 +111,10 @@ input:checked+.slider:before{transform:translateX(20px)}
   </div>
 
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('dashboard')">📊 看板</button>
-    <button class="tab" onclick="switchTab('strategies')">⚙️ 策略管理</button>
-    <button class="tab" onclick="switchTab('positions')">💼 持仓管理</button>
-    <button class="tab" onclick="switchTab('settings')">🔧 设置</button>
+    <button class="tab active" onclick="switchTab('dashboard',event)">📊 看板</button>
+    <button class="tab" onclick="switchTab('strategies',event)">⚙️ 策略管理</button>
+    <button class="tab" onclick="switchTab('positions',event)">💼 持仓管理</button>
+    <button class="tab" onclick="switchTab('settings',event)">🔧 设置</button>
   </div>
 
   <div class="content">
@@ -126,7 +147,7 @@ input:checked+.slider:before{transform:translateX(20px)}
       <div class="card">
         <h3>自选股行情</h3>
         <table>
-          <thead><tr><th>代码</th><th>名称</th><th>现价</th><th>涨跌幅</th><th>启用的策略</th></tr></thead>
+          <thead><tr><th>代码</th><th>名称</th><th>现价</th><th>涨跌幅</th><th>PE</th><th>换手%</th><th>30日走势</th><th>启用的策略</th></tr></thead>
           <tbody id="watchlist-quotes"></tbody>
         </table>
         <div id="no-watchlist" class="hidden" style="padding:20px;text-align:center;color:#999">暂无自选，先在「策略管理」添加</div>
@@ -147,6 +168,10 @@ input:checked+.slider:before{transform:translateX(20px)}
 
     <!-- Positions Tab -->
     <div id="tab-positions" class="tab-content">
+      <div class="warning-box">
+        ⚠️ 系统持仓为你自行维护的数据，不与华安证券账户自动同步。<br>
+        请确保股数、成本价与实际一致，否则看板盈亏可能不准确。
+      </div>
       <div class="card">
         <h3>添加持仓</h3>
         <div class="flex" style="gap:8px;flex-wrap:wrap">
@@ -180,10 +205,36 @@ input:checked+.slider:before{transform:translateX(20px)}
   </div>
 </div>
 
+<div id="kline-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeKline()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="flex" style="gap:8px;align-items:center">
+        <h3 id="kline-title">K线图</h3>
+        <div style="display:flex;gap:2px;background:#f0f0f0;border-radius:6px;padding:2px">
+          <button class="kl-tab active" id="kl-tab-day" onclick="switchKlineMode('day')">日K</button>
+          <button class="kl-tab" id="kl-tab-minute" onclick="switchKlineMode('minute')">分时</button>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeKline()">✕</button>
+    </div>
+    <canvas id="kline-canvas" width="770" height="400" class="kl-canvas"></canvas>
+    <div class="kl-legend" id="kl-legend">
+      <span>红涨绿跌 · 柱体=开盘→收盘 · 影线=最高/最低</span>
+      <span>|</span>
+      <span>底部柱=成交量</span>
+    </div>
+  </div>
+</div>
+
 <script>
+// Remove diagnostic on script start (proves JS executed)
 const API = '';
 let token = localStorage.getItem('aqt_token');
 let isRegisterMode = false;
+
+// ── Loading ──
+function showLoading() { document.getElementById('loading-overlay').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading-overlay').classList.add('hidden'); }
 
 // ── Auth ──
 function setAuth(t, username) {
@@ -243,11 +294,12 @@ function logout() {
 }
 
 // ── Tabs ──
-function switchTab(name) {
+function switchTab(name, e) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('tab-'+name).classList.add('active');
+  if (e && e.target) e.target.classList.add('active');
+  var tabEl = document.getElementById('tab-'+name);
+  if (tabEl) tabEl.classList.add('active');
   if (name === 'dashboard') loadDashboard();
   if (name === 'strategies') loadStrategies();
   if (name === 'positions') loadPositions();
@@ -256,13 +308,42 @@ function switchTab(name) {
 
 // ── API helpers ──
 async function api(url, opts={}) {
-  const res = await fetch(API + url, {
-    ...opts,
-    headers:{'Authorization':'Bearer '+token, 'Content-Type':'application/json', ...opts.headers}
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.detail || json.error || 'Error');
-  return json;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+  try {
+    const res = await fetch(API + url, {
+      ...opts,
+      signal: controller.signal,
+      headers:{'Authorization':'Bearer '+token, 'Content-Type':'application/json', ...opts.headers}
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || json.error || 'Error');
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function validateRequired(id, label) {
+  const el = document.getElementById(id);
+  if (!el.value.trim()) {
+    el.style.borderColor = '#dc2626';
+    const errEl = el.nextElementSibling;
+    if (errEl && errEl.classList.contains('error-text')) errEl.textContent = label + '不能为空';
+    return false;
+  }
+  el.style.borderColor = '#ddd';
+  return true;
+}
+function validateNumber(id, label) {
+  const el = document.getElementById(id);
+  const v = parseFloat(el.value);
+  if (!el.value || isNaN(v)) {
+    el.style.borderColor = '#dc2626';
+    return false;
+  }
+  el.style.borderColor = '#ddd';
+  return true;
 }
 
 function notify(msg, type='success') {
@@ -277,6 +358,350 @@ function notify(msg, type='success') {
 function fmt(n) { return n == null || isNaN(n) ? '-' : Number(n).toFixed(2); }
 function pct(n) { return n == null || isNaN(n) ? '-' : (n>0?'+':'') + n.toFixed(2) + '%'; }
 function clr(n) { return n > 0 ? 'green' : n < 0 ? 'red' : ''; }
+
+function drawSparkline(canvasId, data) {
+  const cvs = document.getElementById(canvasId);
+  if (!cvs || !data || data.length < 2) return;
+  const ctx = cvs.getContext('2d');
+  const w = cvs.width, h = cvs.height, pad = 2;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const up = data[data.length - 1] >= data[0];
+  const color = up ? '#16a34a' : '#dc2626';
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Fill area
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.lineTo(pad + w - pad * 2, h - pad);
+  ctx.lineTo(pad, h - pad);
+  ctx.closePath();
+  ctx.fillStyle = up ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+}
+
+// ── K-line Modal ──
+var klSymbol = '', klName = '', klMode = 'day', klDayData = null, klMinData = null;
+var klUpdateTimer = null;
+
+async function showKline(symbol, name) {
+  klSymbol = symbol;
+  klName = name;
+  klMode = 'day';
+  klDayData = null;
+  klMinData = null;
+  document.getElementById('kline-title').textContent = symbol + (name ? ' ' + name : '') + ' K线图';
+  document.getElementById('kline-modal').classList.remove('hidden');
+  showLoading();
+  try {
+    // Fetch both in parallel
+    var res = await api('/api/kline/' + symbol + '?days=60');
+    klDayData = res.data;
+    var minRes = await api('/api/kline/' + symbol + '/minute');
+    klMinData = minRes.data;
+    // Default to 分时 if data available, else 日K
+    if (klMinData && klMinData.times && klMinData.times.length > 0) {
+      switchKlineMode('minute');
+    } else {
+      switchKlineMode('day');
+    }
+  } catch(err) { notify('加载K线失败: '+err.message, 'error'); closeKline(); }
+  finally { hideLoading(); }
+  // Auto-refresh minute chart every 30s
+  if (klUpdateTimer) clearInterval(klUpdateTimer);
+  klUpdateTimer = setInterval(refreshMinute, 30000);
+}
+
+function refreshMinute() {
+  if (klMode !== 'minute' || !klSymbol) return;
+  api('/api/kline/' + klSymbol + '/minute').then(function(res) {
+    if (res.data && res.data.times) {
+      klMinData = res.data;
+      drawMinuteChart('kline-canvas', klMinData);
+    }
+  }).catch(function(){});
+}
+
+function closeKline() {
+  document.getElementById('kline-modal').classList.add('hidden');
+  if (klUpdateTimer) { clearInterval(klUpdateTimer); klUpdateTimer = null; }
+  klSymbol = '';
+}
+
+function switchKlineMode(mode) {
+  klMode = mode;
+  document.getElementById('kl-tab-day').classList.toggle('active', mode === 'day');
+  document.getElementById('kl-tab-minute').classList.toggle('active', mode === 'minute');
+  document.getElementById('kl-legend').innerHTML = mode === 'day'
+    ? '<span>红涨绿跌 · 柱体=开盘→收盘 · 影线=最高/最低</span><span>|</span><span>底部柱=成交量</span>'
+    : '<span>蓝色线=当前价 · 灰色虚线=昨收</span><span>|</span><span>底部柱=每分钟成交量 · 每30秒自动刷新</span>';
+  if (mode === 'day') {
+    drawKline('kline-canvas', klDayData);
+  } else {
+    drawMinuteChart('kline-canvas', klMinData);
+  }
+}
+
+function drawKline(canvasId, data) {
+  var cvs = document.getElementById(canvasId);
+  if (!cvs) return;
+  var ctx = cvs.getContext('2d');
+  if (!data || data.length === 0) {
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    ctx.fillStyle = '#999';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('暂无日K数据', cvs.width/2, cvs.height/2);
+    return;
+  }
+  var w = cvs.width, h = cvs.height;
+  var pad = {top: 20, right: 20, bottom: 80, left: 60};
+  var chartW = w - pad.left - pad.right;
+  var chartH = h - pad.top - pad.bottom;
+  var n = data.length;
+
+  var volMax = Math.max(...data.map(function(d) { return d.volume; }));
+  var priceMin = Math.min(...data.map(function(d) { return d.low; }));
+  var priceMax = Math.max(...data.map(function(d) { return d.high; }));
+  var priceRange = priceMax - priceMin || 1;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(pad.left, pad.top, chartW, chartH);
+
+  // Grid lines
+  ctx.strokeStyle = '#eee';
+  ctx.lineWidth = 0.5;
+  for (var i = 0; i <= 5; i++) {
+    var y = pad.top + (chartH / 5) * i;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + chartW, y);
+    ctx.stroke();
+    var price = priceMax - (priceRange / 5) * i;
+    ctx.fillStyle = '#999';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(price.toFixed(2), pad.left - 6, y + 4);
+  }
+
+  // Candles
+  var candleGap = 1;
+  var candleW = Math.max(1, (chartW / n) - candleGap);
+  data.forEach(function(d, i) {
+    var x = pad.left + (i / n) * chartW + (chartW / n - candleW) / 2;
+    var openY = pad.top + ((priceMax - d.open) / priceRange) * chartH;
+    var closeY = pad.top + ((priceMax - d.close) / priceRange) * chartH;
+    var highY = pad.top + ((priceMax - d.high) / priceRange) * chartH;
+    var lowY = pad.top + ((priceMax - d.low) / priceRange) * chartH;
+    var up = d.close >= d.open;
+    var color = up ? '#dc2626' : '#16a34a';
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x + candleW / 2, highY);
+    ctx.lineTo(x + candleW / 2, lowY);
+    ctx.stroke();
+
+    var bodyH = Math.max(1, Math.abs(closeY - openY));
+    ctx.fillStyle = color;
+    ctx.fillRect(x, Math.min(openY, closeY), candleW, bodyH);
+  });
+
+  // Volume
+  var volAreaTop = h - pad.bottom + 20;
+  var volH = pad.bottom - 30;
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(pad.left, volAreaTop, chartW, volH);
+
+  var volRatio = volH / (volMax || 1);
+  data.forEach(function(d, i) {
+    var x = pad.left + (i / n) * chartW + (chartW / n - candleW) / 2;
+    var barH = d.volume * volRatio;
+    var up = d.close >= d.open;
+    ctx.fillStyle = up ? 'rgba(220,38,38,0.35)' : 'rgba(22,163,74,0.35)';
+    ctx.fillRect(x, volAreaTop + volH - barH, candleW, barH);
+  });
+
+  ctx.fillStyle = '#999';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(volMax >= 10000 ? (volMax/10000).toFixed(0)+'万' : volMax, pad.left - 6, volAreaTop + 12);
+
+  ctx.textAlign = 'center';
+  var step = Math.max(1, Math.floor(n / 6));
+  data.forEach(function(d, i) {
+    if (i % step === 0 || i === n - 1) {
+      ctx.fillStyle = '#999';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(d.date.slice(5), pad.left + (i / n) * chartW + (chartW / n) / 2, h - pad.bottom + 36);
+    }
+  });
+}
+
+function drawMinuteChart(canvasId, data) {
+  var cvs = document.getElementById(canvasId);
+  if (!cvs) return;
+  var ctx = cvs.getContext('2d');
+  if (!data || !data.times || data.times.length === 0) {
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    ctx.fillStyle = '#999';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('暂无分时数据（非交易时间或数据暂未生成）', cvs.width/2, cvs.height/2);
+    return;
+  }
+
+  var w = cvs.width, h = cvs.height;
+  var pad = {top: 20, right: 20, bottom: 80, left: 60};
+  var chartW = w - pad.left - pad.right;
+  var chartH = h - pad.top - pad.bottom;
+  var n = data.times.length;
+  var yesterday = data.yesterday_close;
+
+  var allP = data.prices.concat([yesterday]);
+  var priceMin = Math.min(...allP);
+  var priceMax = Math.max(...allP);
+  var range = priceMax - priceMin || 0.01;
+  // Expand range a bit so line doesn't touch edges
+  priceMin -= range * 0.1;
+  priceMax += range * 0.1;
+  range = priceMax - priceMin;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(pad.left, pad.top, chartW, chartH);
+
+  // Grid
+  ctx.strokeStyle = '#eee';
+  ctx.lineWidth = 0.5;
+  for (var i = 0; i <= 5; i++) {
+    var y = pad.top + (chartH / 5) * i;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + chartW, y);
+    ctx.stroke();
+    var price = priceMax - (range / 5) * i;
+    ctx.fillStyle = '#999';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(price.toFixed(2), pad.left - 6, y + 4);
+  }
+
+  // Yesterday close horizontal dashed line
+  var ycY = pad.top + ((priceMax - yesterday) / range) * chartH;
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad.left, ycY);
+  ctx.lineTo(pad.left + chartW, ycY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Fill area under price curve
+  var isUp = data.prices[n-1] >= yesterday;
+  ctx.beginPath();
+  data.prices.forEach(function(p, i) {
+    var x = pad.left + (i / (n - 1 || 1)) * chartW;
+    var py = pad.top + ((priceMax - p) / range) * chartH;
+    if (i === 0) ctx.moveTo(x, py); else ctx.lineTo(x, py);
+  });
+  ctx.lineTo(pad.left + chartW, pad.top + chartH);
+  ctx.lineTo(pad.left, pad.top + chartH);
+  ctx.closePath();
+  ctx.fillStyle = isUp ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)';
+  ctx.fill();
+
+  // Price line
+  ctx.beginPath();
+  data.prices.forEach(function(p, i) {
+    var x = pad.left + (i / (n - 1 || 1)) * chartW;
+    var py = pad.top + ((priceMax - p) / range) * chartH;
+    if (i === 0) ctx.moveTo(x, py); else ctx.lineTo(x, py);
+  });
+  ctx.strokeStyle = '#2196F3';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Average price line (simple: end-to-end midpoint)
+  var avg = data.prices.reduce(function(a,b){return a+b;},0) / data.prices.length;
+  var avgY = pad.top + ((priceMax - avg) / range) * chartH;
+  ctx.strokeStyle = '#FF9800';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(pad.left, avgY);
+  ctx.lineTo(pad.left + chartW, avgY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Volume bars
+  var volMax = Math.max(...data.volumes) || 1;
+  var volAreaTop = h - pad.bottom + 20;
+  var volH = pad.bottom - 30;
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(pad.left, volAreaTop, chartW, volH);
+
+  data.volumes.forEach(function(v, i) {
+    var x = pad.left + (i / (n - 1 || 1)) * chartW;
+    var barH = (v / volMax) * volH;
+    var barW = Math.max(0.5, chartW / n - 0.5);
+    // Use same color as price trend
+    var prev = i > 0 ? data.prices[i-1] : yesterday;
+    var color = data.prices[i] >= prev ? 'rgba(220,38,38,0.3)' : 'rgba(22,163,74,0.3)';
+    ctx.fillStyle = color;
+    ctx.fillRect(x - barW/2, volAreaTop + volH - barH, barW, barH);
+  });
+
+  // Volume label
+  ctx.fillStyle = '#999';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(volMax >= 10000 ? (volMax/10000).toFixed(0)+'万' : volMax, pad.left - 6, volAreaTop + 12);
+
+  // Time labels
+  ctx.textAlign = 'center';
+  var showTimes = ['09:30','10:00','10:30','11:00','11:30','13:30','14:00','14:30','15:00'];
+  showTimes.forEach(function(t) {
+    var idx = data.times.indexOf(t);
+    if (idx < 0) {
+      // Find closest
+      var minDiff = Infinity;
+      for (var j = 0; j < data.times.length; j++) {
+        var diff = Math.abs(data.times[j].localeCompare(t));
+        if (diff < minDiff) { minDiff = diff; idx = j; }
+      }
+    }
+    if (idx >= 0) {
+      var tx = pad.left + (idx / (n - 1 || 1)) * chartW;
+      ctx.fillStyle = '#999';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(t, tx, h - pad.bottom + 36);
+    }
+  });
+}
 
 // ── Dashboard ──
 async function loadDashboard() {
@@ -336,16 +761,23 @@ async function loadDashboard() {
       wqBody.innerHTML = ''; noWl.classList.remove('hidden');
     } else {
       noWl.classList.add('hidden');
-      wqBody.innerHTML = d.watchlist.map(w => {
+      wqBody.innerHTML = d.watchlist.map((w, i) => {
         const strategies = JSON.parse(w.strategy_params || '{}');
         const enabled = Object.entries(strategies).filter(([_,v]) => v.enabled).map(([k]) => k).join(', ') || '无';
         return `<tr>
-          <td>${w.symbol}</td><td>${w.name}</td>
+          <td>${w.symbol}</td><td><div>${w.name}</div><div class="wl-extra">${w.market_cap ? '市值'+w.market_cap.toFixed(0)+'亿' : ''}</div></td>
           <td>${fmt(w.last_price)}</td>
           <td class="${clr(w.change_pct)}">${pct(w.change_pct)}</td>
+          <td>${w.pe ? w.pe.toFixed(1) : '-'}</td>
+          <td>${w.turnover_rate ? w.turnover_rate.toFixed(2)+'%' : '-'}</td>
+          <td><canvas id="spark-${i}" width="100" height="32" style="display:block" onclick="showKline('${w.symbol}','${w.name}')" title="点击查看K线图"></canvas></td>
           <td style="font-size:12px">${enabled}</td>
         </tr>`;
       }).join('');
+      // Draw sparklines after DOM insertion
+      setTimeout(() => {
+        d.watchlist.forEach((w, i) => drawSparkline('spark-'+i, w.sparkline));
+      }, 50);
     }
   } catch(err) { notify('加载看板失败: '+err.message, 'error'); }
 }
@@ -361,12 +793,14 @@ async function markAllRead() {
 }
 
 async function manualCheck() {
+  showLoading();
   try {
     const res = await api('/api/check-now', {method:'POST'});
     const count = res.data.new_signals.length;
-    notify(count > 0 ? `发现 ${count} 个新信号!` : '没有新信号', count > 0 ? 'success' : 'success');
+    notify(count > 0 ? `发现 ${count} 个新信号!` : '没有新信号', 'success');
     loadDashboard();
   } catch(err) { notify('检查失败: '+err.message, 'error'); }
+  finally { hideLoading(); }
 }
 
 // ── Strategies ──
@@ -420,13 +854,15 @@ async function loadStrategies() {
 
 async function addWatchlist() {
   const symbol = document.getElementById('new-symbol').value.trim();
-  if (!symbol) return notify('请输入股票代码', 'error');
+  if (!symbol || symbol.length !== 6) return notify('请输入6位股票代码', 'error');
+  showLoading();
   try {
     await api('/api/watchlist', {method:'POST', body:JSON.stringify({symbol})});
     document.getElementById('new-symbol').value = '';
     notify('添加成功');
     loadStrategies();
-  } catch(err) { notify(err.message, 'error'); }
+  } catch(err) { notify('添加失败: '+err.message, 'error'); }
+  finally { hideLoading(); }
 }
 
 async function deleteWatchlist(id) {
@@ -532,15 +968,21 @@ async function saveSettings() {
   if (pass) body.smtp_password = pass;
   await api('/api/settings', {method:'PUT', body:JSON.stringify(body)});
   notify('设置已保存');
+  if (pass) document.getElementById('set-smtp-pass').value = '';
 }
 
 // ── Polling ──
 setInterval(() => {
-  if (token && !document.getElementById('login-overlay').classList.contains('hidden') === false) {
-    const dashTab = document.getElementById('tab-dashboard');
-    if (dashTab.classList.contains('active')) loadDashboard();
+  if (!token) return;
+  const loginHidden = document.getElementById('login-overlay').classList.contains('hidden');
+  if (loginHidden && document.getElementById('tab-dashboard').classList.contains('active')) {
+    loadDashboard();
   }
 }, 30000);
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeKline();
+});
 </script>
 </body>
 </html>

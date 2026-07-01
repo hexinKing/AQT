@@ -42,6 +42,7 @@ class MACrossStrategy(BaseStrategy):
                 direction="BUY",
                 price=last_price,
                 reason=f"MA{short}({curr_short:.2f}) 上穿 MA{long}({curr_long:.2f}) → 金叉买入",
+                meta={"short_ma": round(float(curr_short), 2), "long_ma": round(float(curr_long), 2)},
             )
 
         # Death cross: short crosses below long
@@ -52,6 +53,7 @@ class MACrossStrategy(BaseStrategy):
                 direction="SELL",
                 price=last_price,
                 reason=f"MA{short}({curr_short:.2f}) 下穿 MA{long}({curr_long:.2f}) → 死叉卖出",
+                meta={"short_ma": round(float(curr_short), 2), "long_ma": round(float(curr_long), 2)},
             )
 
         return None

@@ -42,6 +42,7 @@ class TrailingStopStrategy(BaseStrategy):
                 direction="SELL",
                 price=last_price,
                 reason=f"价格 {last_price:.2f} 从最高点 {highest:.2f} 回落 {trail_pct*100:.0f}%，触发移动止损 (止损价 {trail_price:.2f})",
+                meta={"highest_since_entry": highest, "trail_price": round(trail_price, 2), "trail_pct": trail_pct},
             )
 
         return None

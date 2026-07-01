@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 .env
 data.db
+.stock_names.json
+.daily_cache.json
 test_integration.py
 *.egg-info/
 dist/

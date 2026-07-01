@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import pandas as pd
@@ -11,6 +11,7 @@ class Signal:
     direction: str  # BUY / SELL
     price: float
     reason: str
+    meta: dict = field(default_factory=dict)  # extra context for downstream consumers
 
 
 class BaseStrategy:

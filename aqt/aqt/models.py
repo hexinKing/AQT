@@ -27,6 +27,7 @@ class User(Base):
     watchlist = relationship("Watchlist", back_populates="user", cascade="all, delete-orphan")
     positions = relationship("Position", back_populates="user", cascade="all, delete-orphan")
     signals = relationship("Signal", back_populates="user", cascade="all, delete-orphan")
+    notification_logs = relationship("NotificationLog", back_populates="user", cascade="all, delete-orphan")
 
 
 class Watchlist(Base):
@@ -81,3 +82,19 @@ class Signal(Base):
     created_at = Column(DateTime, default=_now)
 
     user = relationship("User", back_populates="signals")
+
+
+class NotificationLog(Base):
+    __tablename__ = "notification_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    ntype = Column(String(16), nullable=False)  # email / sms / web
+    recipient = Column(String(128), default="")
+    subject = Column(String(256), default="")
+    body_snippet = Column(String(256), default="")
+    success = Column(Integer, default=0)  # 0 = fail, 1 = success
+    error_msg = Column(String(256), default="")
+    created_at = Column(DateTime, default=_now)
+
+    user = relationship("User", back_populates="notification_logs")

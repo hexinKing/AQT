@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from .config import settings as app_settings
 from .data_fetcher import fetch_daily, fetch_realtime
-from .models import Signal, User, Watchlist
+from .models import NotificationLog, Signal, User, Watchlist
 from .notifier import send_email
+from .risk import validate_signal
 from .strategies.ma_cross import MACrossStrategy
 from .strategies.grid import GridStrategy
 from .strategies.trailing_stop import TrailingStopStrategy
@@ -35,6 +36,34 @@ def _signal_exists_today(db: Session, user_id: int, symbol: str, strategy: str, 
     return count > 0
 
 
+def _count_signals_today(db: Session, user_id: int, symbol: str) -> int:
+    """Count all signals for a symbol today."""
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        db.query(Signal)
+        .filter(
+            Signal.user_id == user_id,
+            Signal.symbol == symbol,
+            Signal.created_at >= today_start,
+        )
+        .count()
+    )
+
+
+def _log_notification(db: Session, user_id: int, success: bool, recipient: str, subject: str, body: str, error: str = ""):
+    """Persist a notification attempt."""
+    log = NotificationLog(
+        user_id=user_id,
+        ntype="email",
+        recipient=recipient,
+        subject=subject[:256],
+        body_snippet=body[:256] if body else "",
+        success=1 if success else 0,
+        error_msg=error[:256] if error else "",
+    )
+    db.add(log)
+
+
 def run_strategies(user_id: int, db: Session) -> list[dict]:
     """
     Run all enabled strategies for a user's watchlist.
@@ -55,16 +84,19 @@ def run_strategies(user_id: int, db: Session) -> list[dict]:
         if df.empty or len(df) < 20:
             continue
 
-        # Check if market is open today (latest bar date is today)
+        # Check if market data is today's (skip stale data on holidays)
         try:
             latest_date = df["date"].iloc[-1]
             if hasattr(latest_date, "date"):
                 latest_date = latest_date.date()
             if latest_date != date.today():
-                # stale data, skip evaluation
                 continue
         except Exception:
             continue
+
+        last_price = float(df["close"].iloc[-1])
+        prev_close = float(df["close"].iloc[-2]) if len(df) >= 2 else None
+        signals_today = _count_signals_today(db, user_id, item.symbol)
 
         strategies_config = item.strategies
 
@@ -80,6 +112,20 @@ def run_strategies(user_id: int, db: Session) -> list[dict]:
                 continue
 
             signal.symbol = item.symbol
+
+            # Risk checks
+            stock_name = item.name or signal.symbol
+            rejection = validate_signal(
+                symbol=item.symbol,
+                name=stock_name,
+                direction=signal.direction,
+                last_price=last_price,
+                prev_close=prev_close,
+                signals_today=signals_today,
+            )
+            if rejection:
+                # Log filtered-out signal (not persisted as trading signal, but could be debug-logged)
+                continue
 
             # Dedup: same signal today
             if _signal_exists_today(db, user_id, item.symbol, strategy_name, signal.direction):
@@ -100,6 +146,7 @@ def run_strategies(user_id: int, db: Session) -> list[dict]:
             )
             db.add(db_signal)
             db.flush()
+            signals_today += 1
 
             new_signals.append(
                 {
@@ -109,18 +156,19 @@ def run_strategies(user_id: int, db: Session) -> list[dict]:
                     "direction": db_signal.direction,
                     "price": db_signal.price,
                     "reason": db_signal.reason,
+                    "meta": signal.meta,
                     "created_at": db_signal.created_at.isoformat(),
                 }
             )
 
-            # Send email notification
+            # Send email notification + log it
             if user.email:
-                stock_name = item.name or item.symbol
-                subject = f"[AQT] {stock_name} {signal.direction} 信号 — {signal.reason}"
+                stock_display = item.name or item.symbol
+                subject = f"[AQT] {stock_display} {signal.direction} 信号 — {signal.reason}"
                 body = f"""\
 【A股量化监控 - 交易信号】
 
-股票: {stock_name} ({item.symbol})
+股票: {stock_display} ({item.symbol})
 方向: {signal.direction}
 策略: {strategy_name}
 价格: {signal.price}
@@ -130,7 +178,8 @@ def run_strategies(user_id: int, db: Session) -> list[dict]:
 ---
 此为策略信号提示，请在华安证券 App 手动操作。
 """
-                send_email(app_settings, user.email, subject, body)
+                ok = send_email(app_settings, user.email, subject, body)
+                _log_notification(db, user_id, ok, user.email, subject, body)
 
     db.commit()
     return new_signals

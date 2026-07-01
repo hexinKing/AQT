@@ -37,6 +37,7 @@ class GridStrategy(BaseStrategy):
                     direction="BUY",
                     price=last_price,
                     reason=f"价格 {last_price:.2f} 触及买入网格 L{n} ({buy_level:.2f})，网格间隔 {grid_pct*100:.0f}%",
+                    meta={"grid_level": n, "base_price": base_price, "grid_pct": grid_pct},
                 )
 
             # Price rose into sell zone
@@ -47,6 +48,7 @@ class GridStrategy(BaseStrategy):
                     direction="SELL",
                     price=last_price,
                     reason=f"价格 {last_price:.2f} 触及卖出网格 L{n} ({sell_level:.2f})，网格间隔 {grid_pct*100:.0f}%",
+                    meta={"grid_level": n, "base_price": base_price, "grid_pct": grid_pct},
                 )
 
         return None
