@@ -19,8 +19,20 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 
-def _scheduled_check():
-    """Run strategies for all users every 5 minutes."""
+def _scheduled_tick():
+    """Single scheduler tick: refresh data + run strategies, weekdays 9:00-15:30 only."""
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return
+    t = now.hour * 60 + now.minute
+    if not (540 <= t <= 930):  # 9:00-15:30
+        return
+
+    try:
+        warmup_cache()
+    except Exception:
+        logger.exception("Scheduled warmup failed")
+
     db = next(get_db())
     try:
         users = db.query(User).all()
@@ -33,25 +45,11 @@ def _scheduled_check():
         db.close()
 
 
-def _scheduled_warmup():
-    """Refresh cached data every 15 minutes during market hours."""
-    now = datetime.now()
-    # A-share market: 9:30-11:30, 13:00-15:00, Mon-Fri
-    if now.weekday() < 5:
-        t = now.hour * 60 + now.minute
-        if (570 <= t <= 690) or (780 <= t <= 900):
-            try:
-                warmup_cache()
-            except Exception:
-                logger.exception("Scheduled warmup failed")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     warmup_cache()
-    scheduler.add_job(_scheduled_check, "interval", minutes=5, id="strategy_check")
-    scheduler.add_job(_scheduled_warmup, "interval", minutes=15, id="data_warmup")
+    scheduler.add_job(_scheduled_tick, "interval", minutes=5, id="tick")
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
