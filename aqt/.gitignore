@@ -8,3 +8,5 @@ data.db
 test_integration.py
 *.egg-info/
 dist/
+*.db-shm
+*.db-wal

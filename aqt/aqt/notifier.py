@@ -17,8 +17,11 @@ def send_email(settings: Settings, to_email: str, subject: str, body: str) -> bo
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
     try:
-        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
-        server.starttls()
+        if settings.smtp_port == 465:
+            server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=10)
+        else:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
+            server.starttls()
         server.login(settings.smtp_user, settings.smtp_password)
         server.sendmail(settings.smtp_user, [to_email], msg.as_string())
         server.quit()

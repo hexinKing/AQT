@@ -175,7 +175,8 @@ def _tencent_fetch_daily(symbol: str, days: int) -> pd.DataFrame | None:
         body = r.json()
         if body.get("code") != 0:
             return None
-        rows = body.get("data", {}).get(code, {}).get("qfqday")
+        inner = body.get("data", {}).get(code, {})
+        rows = inner.get("qfqday") or inner.get("day")
         if not rows:
             return None
         # Tencent order: date, open, close, high, low, volume
