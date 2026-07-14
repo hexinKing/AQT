@@ -68,6 +68,16 @@ input:checked+.slider:before{transform:translateX(20px)}
 .spark-col{width:110px}
 .spark-col canvas{cursor:pointer;border-radius:4px;transition:box-shadow .15s}
 .spark-col canvas:hover{box-shadow:0 0 0 2px #4361ee}
+.news-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+.news-item{padding:12px 14px;border:1px solid #eceff5;border-radius:10px;background:linear-gradient(180deg,#fff 0%,#fafbfe 100%);min-width:0}
+.news-title{font-size:13px;color:#1a1a2e;text-decoration:none;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.news-title:hover{text-decoration:underline}
+.news-meta{font-size:11px;color:#8b93a7;margin-top:6px;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.news-meta span{display:inline-flex;align-items:center;gap:4px}
+.news-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.news-tag{font-size:11px;line-height:1;padding:4px 7px;border-radius:999px;background:#eef2ff;color:#3558d6}
+.news-summary{font-size:12px;color:#5f677a;line-height:1.55;margin-top:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media (max-width: 900px){.news-list{grid-template-columns:1fr}}
 .modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.5);display:flex;justify-content:center;align-items:center;z-index:9999}
 .modal-card{background:#fff;border-radius:12px;padding:24px;width:820px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25)}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
@@ -151,6 +161,16 @@ input:checked+.slider:before{transform:translateX(20px)}
           <tbody id="watchlist-quotes"></tbody>
         </table>
         <div id="no-watchlist" class="hidden" style="padding:20px;text-align:center;color:#999">暂无自选，先在「策略管理」添加</div>
+      </div>
+
+      <div class="card">
+        <div class="flex" style="justify-content:space-between;align-items:center">
+          <h3>热点资讯</h3>
+          <span id="news-status" style="font-size:12px;color:#999">加载中...</span>
+        </div>
+        <div id="news-list" class="news-list" style="margin-top:12px">
+          <div style="padding:20px;text-align:center;color:#999">正在加载新闻...</div>
+        </div>
       </div>
     </div>
 
@@ -354,10 +374,28 @@ function notify(msg, type='success') {
   setTimeout(() => el.remove(), 3000);
 }
 
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── Format helpers ──
 function fmt(n) { return n == null || isNaN(n) ? '-' : Number(n).toFixed(2); }
 function pct(n) { return n == null || isNaN(n) ? '-' : (n>0?'+':'') + n.toFixed(2) + '%'; }
 function clr(n) { return n > 0 ? 'green' : n < 0 ? 'red' : ''; }
+function shortDate(v) {
+  if (!v) return '--';
+  const dt = new Date(v);
+  if (Number.isNaN(dt.getTime())) return String(v).slice(5, 16).replace('T', ' ');
+  return dt.toLocaleString('zh-CN', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+function escapeAttr(v) {
+  return String(v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 function drawSparkline(canvasId, data) {
   const cvs = document.getElementById(canvasId);
@@ -779,7 +817,53 @@ async function loadDashboard() {
         d.watchlist.forEach((w, i) => drawSparkline('spark-'+i, w.sparkline));
       }, 50);
     }
+
+    loadNews(d);
   } catch(err) { notify('加载看板失败: '+err.message, 'error'); }
+}
+
+async function loadNews(dashboardData) {
+  const newsList = document.getElementById('news-list');
+  const statusEl = document.getElementById('news-status');
+  const symbols = Array.from(new Set([
+    ...(dashboardData.watchlist || []).map(item => item.symbol),
+    ...(dashboardData.positions || []).map(item => item.symbol)
+  ])).filter(Boolean);
+
+  if (symbols.length === 0) {
+    statusEl.textContent = '暂无标的';
+    newsList.innerHTML = '<div style="padding:20px;text-align:center;color:#999">暂无相关新闻，请先添加自选股或持仓。</div>';
+    return;
+  }
+
+  statusEl.textContent = '加载中...';
+  newsList.innerHTML = '<div style="padding:20px;text-align:center;color:#999">正在加载新闻...</div>';
+
+  try {
+    const res = await api('/api/news?symbols=' + encodeURIComponent(symbols.join(',')) + '&limit=20&page=1');
+    const items = (res.data && res.data.items) || [];
+    if (items.length === 0) {
+      statusEl.textContent = res.message === 'news source unavailable' ? '新闻源异常' : '暂无资讯';
+      newsList.innerHTML = `<div style="padding:20px;text-align:center;color:#999">${res.message === 'news source unavailable' ? '新闻源暂不可用，请稍后再试。' : '暂无相关新闻。'}</div>`;
+      return;
+    }
+
+    statusEl.textContent = res.message === 'partial news unavailable' ? `已展示 ${items.length} 条，部分来源失败` : `共 ${res.data.total} 条`;
+    newsList.innerHTML = items.map(item => `
+      <div class="news-item">
+        <a class="news-title" href="${escapeAttr(item.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || '未命名新闻')}</a>
+        <div class="news-meta">
+          <span>${escapeHtml(item.source || '未知来源')}</span>
+          <span>${escapeHtml(shortDate(item.published_at))}</span>
+        </div>
+        ${(item.symbols || []).length ? `<div class="news-tags">${item.symbols.slice(0, 3).map(symbol => `<span class="news-tag">${escapeHtml(symbol)}</span>`).join('')}</div>` : ''}
+        ${item.summary ? `<div class="news-summary">${escapeHtml(item.summary)}</div>` : ''}
+      </div>
+    `).join('');
+  } catch(err) {
+    statusEl.textContent = '加载失败';
+    newsList.innerHTML = '<div style="padding:20px;text-align:center;color:#999">新闻源暂不可用，请稍后再试。</div>';
+  }
 }
 
 async function markRead(id) {

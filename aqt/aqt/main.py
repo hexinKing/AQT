@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,16 +13,19 @@ from .data_fetcher import warmup_cache
 from .database import Base, engine, get_db
 from .engine import run_strategies
 from .models import User
-from .routers import auth, dashboard, positions, settings, signals, watchlist
+from .routers import auth, dashboard, news, positions, settings, signals, watchlist
+from .services.market_service import is_trade_day, market_close_minutes
+from .services.report_service import send_market_close_report
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
+_last_report_run: date | None = None
 
 
 def _scheduled_tick():
     """Single scheduler tick: refresh data + run strategies, weekdays 9:00-15:30 only."""
     now = datetime.now()
-    if now.weekday() >= 5:
+    if not is_trade_day(now.date()):
         return
     t = now.hour * 60 + now.minute
     if not (540 <= t <= 930):  # 9:00-15:30
@@ -45,11 +48,37 @@ def _scheduled_tick():
         db.close()
 
 
+def _scheduled_market_close_report():
+    global _last_report_run
+
+    now = datetime.now()
+    if not is_trade_day(now.date()):
+        return
+    if now.hour * 60 + now.minute < market_close_minutes():
+        return
+    if _last_report_run == now.date():
+        return
+
+    db = next(get_db())
+    try:
+        users = db.query(User).all()
+        for user in users:
+            try:
+                send_market_close_report(user, db, report_date=now.date())
+            except Exception:
+                logger.exception("Market close report failed for user %s", user.id)
+        db.commit()
+        _last_report_run = now.date()
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     warmup_cache()
     scheduler.add_job(_scheduled_tick, "interval", minutes=5, id="tick")
+    scheduler.add_job(_scheduled_market_close_report, "interval", minutes=5, id="market-close-report")
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
@@ -81,6 +110,7 @@ app.include_router(watchlist.router)
 app.include_router(positions.router)
 app.include_router(signals.router)
 app.include_router(dashboard.router)
+app.include_router(news.router)
 app.include_router(settings.router)
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"

@@ -3,14 +3,14 @@ from datetime import datetime, date
 
 from sqlalchemy.orm import Session
 
-from .config import settings as app_settings
-from .data_fetcher import fetch_daily, fetch_realtime
-from .models import NotificationLog, Signal, User, Watchlist
-from .notifier import send_email
+from .data_fetcher import fetch_daily
+from .models import Signal, User, Watchlist
 from .risk import validate_signal
+from .services.report_service import log_notification, user_mail_settings
 from .strategies.ma_cross import MACrossStrategy
 from .strategies.grid import GridStrategy
 from .strategies.trailing_stop import TrailingStopStrategy
+from .notifier import send_email
 
 STRATEGIES = {
     "ma_cross": MACrossStrategy(),
@@ -48,21 +48,6 @@ def _count_signals_today(db: Session, user_id: int, symbol: str) -> int:
         )
         .count()
     )
-
-
-def _log_notification(db: Session, user_id: int, success: bool, recipient: str, subject: str, body: str, error: str = ""):
-    """Persist a notification attempt."""
-    log = NotificationLog(
-        user_id=user_id,
-        ntype="email",
-        recipient=recipient,
-        subject=subject[:256],
-        body_snippet=body[:256] if body else "",
-        success=1 if success else 0,
-        error_msg=error[:256] if error else "",
-    )
-    db.add(log)
-
 
 def run_strategies(user_id: int, db: Session) -> list[dict]:
     """
@@ -178,8 +163,8 @@ def run_strategies(user_id: int, db: Session) -> list[dict]:
 ---
 此为策略信号提示，请在华安证券 App 手动操作。
 """
-                ok = send_email(app_settings, user.email, subject, body)
-                _log_notification(db, user_id, ok, user.email, subject, body)
+                ok = send_email(user_mail_settings(user), user.email, subject, body)
+                log_notification(db, user_id, ok, user.email, subject, body)
 
     db.commit()
     return new_signals
