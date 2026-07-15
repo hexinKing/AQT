@@ -7,10 +7,27 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 _news_cache: dict[str, tuple[float, list[dict]]] = {}
+# Keep the provider boundary inside this service so Phase 1 can swap to a
+# licensed or official news API later without touching routers/UI code.
 
 
 def _normalize_symbol(symbol: str) -> str:
     return "".join(ch for ch in (symbol or "").strip() if ch.isdigit())
+
+
+def clear_news_cache(symbols: list[str] | None = None) -> int:
+    if not symbols:
+        count = len(_news_cache)
+        _news_cache.clear()
+        return count
+
+    removed = 0
+    for symbol in symbols:
+        clean = _normalize_symbol(symbol)
+        if clean and clean in _news_cache:
+            _news_cache.pop(clean, None)
+            removed += 1
+    return removed
 
 
 def _parse_news_row(row: dict, symbol: str) -> dict | None:

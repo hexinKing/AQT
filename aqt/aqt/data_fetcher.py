@@ -50,6 +50,26 @@ def _market_prefix(symbol: str) -> str:
     return "sh" if symbol.startswith(("6", "5", "9")) else "sz"
 
 
+def _df_from_rows(rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(rows)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+def fetch_daily_cached(symbol: str, days: int = 60) -> pd.DataFrame:
+    """Cache-only daily data for non-critical UI like sparklines."""
+    prev = _daily_cache.get(symbol)
+    if prev:
+        return prev[1].tail(days).reset_index(drop=True)
+
+    disk_rows = _daily_disk.get(symbol)
+    if disk_rows:
+        return _df_from_rows(disk_rows).tail(days).reset_index(drop=True)
+
+    return pd.DataFrame()
+
+
 # ═══════════════════════════════════════════════════════════════
 # Tencent — realtime batch quotes
 # ═══════════════════════════════════════════════════════════════
@@ -224,10 +244,7 @@ def fetch_daily(symbol: str, days: int = 60) -> pd.DataFrame:
         return prev[1]
     disk_rows = _daily_disk.get(symbol)
     if disk_rows:
-        df = pd.DataFrame(disk_rows)
-        if "date" in df.columns:
-            df["date"] = pd.to_datetime(df["date"])
-        return df
+        return _df_from_rows(disk_rows)
 
     # Last resort: akshare
     try:

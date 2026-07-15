@@ -165,7 +165,10 @@ input:checked+.slider:before{transform:translateX(20px)}
 
       <div class="card">
         <div class="flex" style="justify-content:space-between;align-items:center">
-          <h3>热点资讯</h3>
+          <div class="flex" style="gap:8px;align-items:center">
+            <h3 style="margin-bottom:0">热点资讯</h3>
+            <button class="btn btn-sm" type="button" onclick="refreshNewsNow()" title="立即刷新热点资讯">刷新</button>
+          </div>
           <span id="news-status" style="font-size:12px;color:#999">加载中...</span>
         </div>
         <div id="news-list" class="news-list" style="margin-top:12px">
@@ -207,6 +210,14 @@ input:checked+.slider:before{transform:translateX(20px)}
 
     <!-- Settings Tab -->
     <div id="tab-settings" class="tab-content">
+      <div class="card">
+        <h3>热点资讯</h3>
+        <div style="font-size:13px;color:#666;line-height:1.7;margin-bottom:12px">
+          热点资讯默认使用 30 分钟缓存，仅针对自选股抓取。<br>
+          如需立即重新抓取当前自选股新闻，可手动刷新一次。
+        </div>
+        <button class="btn btn-primary" onclick="refreshNewsNow()">立即刷新热点资讯</button>
+      </div>
       <div class="card">
         <h3>通知邮箱</h3>
         <div class="form-group"><label>邮箱地址</label><input type="email" id="set-email"></div>
@@ -825,10 +836,9 @@ async function loadDashboard() {
 async function loadNews(dashboardData) {
   const newsList = document.getElementById('news-list');
   const statusEl = document.getElementById('news-status');
-  const symbols = Array.from(new Set([
-    ...(dashboardData.watchlist || []).map(item => item.symbol),
-    ...(dashboardData.positions || []).map(item => item.symbol)
-  ])).filter(Boolean);
+  const symbols = Array.from(new Set(
+    (dashboardData.watchlist || []).map(item => item.symbol)
+  )).filter(Boolean);
 
   if (symbols.length === 0) {
     statusEl.textContent = '暂无标的';
@@ -1053,6 +1063,22 @@ async function saveSettings() {
   await api('/api/settings', {method:'PUT', body:JSON.stringify(body)});
   notify('设置已保存');
   if (pass) document.getElementById('set-smtp-pass').value = '';
+}
+
+async function refreshNewsNow() {
+  showLoading();
+  try {
+    const res = await api('/api/news/refresh', {method:'POST'});
+    const count = (res.data && res.data.symbols && res.data.symbols.length) || 0;
+    notify(count > 0 ? `已触发 ${count} 个自选股的新闻刷新` : '当前没有可刷新的自选股', 'success');
+    if (document.getElementById('tab-dashboard').classList.contains('active')) {
+      await loadDashboard();
+    }
+  } catch(err) {
+    notify('刷新新闻失败: ' + err.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 // ── Polling ──

@@ -2,7 +2,10 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch
 
+import pandas as pd
+
 from aqt.models import User
+from aqt import data_fetcher
 from aqt.services import market_service, news_service, report_service
 
 
@@ -44,6 +47,20 @@ class DummyDB:
 class NewsServiceTests(unittest.TestCase):
     def tearDown(self):
         news_service._news_cache.clear()
+
+    def test_clear_news_cache_by_symbols(self):
+        news_service._news_cache.update(
+            {
+                "600519": (1.0, [{"title": "A"}]),
+                "000001": (1.0, [{"title": "B"}]),
+            }
+        )
+
+        cleared = news_service.clear_news_cache(["600519"])
+
+        self.assertEqual(cleared, 1)
+        self.assertNotIn("600519", news_service._news_cache)
+        self.assertIn("000001", news_service._news_cache)
 
     @patch("aqt.services.news_service._fetch_symbol_news")
     def test_get_news_dedupes_and_sorts(self, mocked_fetch):
@@ -166,6 +183,25 @@ class MarketServiceTests(unittest.TestCase):
         mocked_fetch.return_value = {datetime(2026, 7, 14).date()}
         self.assertTrue(market_service.is_trade_day(datetime(2026, 7, 14).date()))
         self.assertFalse(market_service.is_trade_day(datetime(2026, 7, 15).date()))
+
+
+class DataFetcherTests(unittest.TestCase):
+    def tearDown(self):
+        data_fetcher._daily_cache.clear()
+        data_fetcher._daily_disk.clear()
+
+    def test_fetch_daily_cached_uses_disk_without_network(self):
+        data_fetcher._daily_disk["600519"] = [
+            {"date": "2026-07-14", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 10},
+            {"date": "2026-07-15", "open": 1.5, "high": 2.5, "low": 1.4, "close": 2.0, "volume": 12},
+        ]
+
+        with patch("aqt.data_fetcher._tencent_fetch_daily", side_effect=AssertionError("should not hit network")):
+            df = data_fetcher.fetch_daily_cached("600519", days=2)
+
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(float(df.iloc[-1]["close"]), 2.0)
 
 
 if __name__ == "__main__":

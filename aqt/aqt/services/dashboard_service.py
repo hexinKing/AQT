@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session
 
 from .. import schemas
-from ..data_fetcher import fetch_daily, fetch_realtime_batch
+from ..data_fetcher import fetch_daily_cached, fetch_realtime_batch
 from ..models import Position, Signal, User, Watchlist
 
 
@@ -20,7 +20,7 @@ def build_dashboard(user: User, db: Session) -> dict:
     for w in wl:
         q = quotes.get(w.symbol, {})
         # Sparkline: last 30 daily closes
-        df = fetch_daily(w.symbol, days=30)
+        df = fetch_daily_cached(w.symbol, days=30)
         sparkline = [round(float(r["close"]), 2) for _, r in df.tail(30).iterrows()] if not df.empty else []
         watchlist_data.append({
             "id": w.id,

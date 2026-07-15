@@ -18,7 +18,7 @@ class Settings:
     smtp_password: str = ""
 
     # Phase 1 integrations
-    news_cache_ttl: int = 120
+    news_cache_ttl: int = 1800
     news_http_timeout: int = 5
     market_close_report_time: str = "15:05"
 
