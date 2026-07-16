@@ -383,6 +383,27 @@ def fetch_realtime(symbol: str) -> dict | None:
     }
 
 
+def _quote_from_daily_cache(symbol: str) -> dict | None:
+    df = fetch_daily_cached(symbol, days=5)
+    if df.empty:
+        return None
+
+    latest = df.iloc[-1]
+    prev = df.iloc[-2] if len(df) > 1 else latest
+    prev_close = float(prev["close"]) if float(prev["close"]) else 0
+    latest_close = float(latest["close"])
+    change_pct = ((latest_close - prev_close) / prev_close * 100) if prev_close else 0
+    return {
+        "symbol": symbol,
+        "name": _name_cache.get(symbol, ""),
+        "last_price": latest_close,
+        "change_pct": round(change_pct, 2),
+        "pe": 0,
+        "turnover_rate": 0,
+        "market_cap": 0,
+    }
+
+
 def fetch_realtime_batch(symbols: list[str]) -> dict[str, dict]:
     if not symbols:
         return {}
@@ -404,6 +425,38 @@ def fetch_realtime_batch(symbols: list[str]) -> dict[str, dict]:
             q = fetch_realtime(sym)
             if q:
                 result[sym] = q
+    return result
+
+
+def fetch_realtime_batch_fast(symbols: list[str]) -> dict[str, dict]:
+    """
+    Fast path for dashboard rendering.
+    Makes at most one realtime request, then falls back to local cached daily data
+    instead of per-symbol network retries.
+    """
+    if not symbols:
+        return {}
+
+    batch = _tencent_realtime_batch(symbols)
+    result = {}
+    for sym in symbols:
+        rt = batch.get(sym)
+        if rt:
+            result[sym] = {
+                "symbol": sym,
+                "name": rt["name"],
+                "last_price": rt["price"],
+                "change_pct": rt["change_pct"],
+                "pe": rt["pe"],
+                "turnover_rate": rt["turnover_rate"],
+                "market_cap": rt["market_cap"],
+            }
+            continue
+
+        cached = _quote_from_daily_cache(sym)
+        if cached:
+            result[sym] = cached
+
     return result
 
 

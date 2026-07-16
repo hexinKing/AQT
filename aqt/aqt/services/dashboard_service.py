@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session
 
 from .. import schemas
-from ..data_fetcher import fetch_daily_cached, fetch_realtime_batch
+from ..data_fetcher import fetch_daily_cached, fetch_realtime_batch_fast
 from ..models import Position, Signal, User, Watchlist
 
 
@@ -14,7 +14,7 @@ def build_dashboard(user: User, db: Session) -> dict:
     wl = db.query(Watchlist).filter(Watchlist.user_id == user.id).all()
 
     symbols = list({p.symbol for p in positions} | {w.symbol for w in wl})
-    quotes = fetch_realtime_batch(symbols) if symbols else {}
+    quotes = fetch_realtime_batch_fast(symbols) if symbols else {}
 
     watchlist_data = []
     for w in wl:

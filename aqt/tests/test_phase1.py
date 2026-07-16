@@ -67,47 +67,73 @@ class NewsServiceTests(unittest.TestCase):
         mocked_fetch.side_effect = [
             ([
                 {
-                    "title": "旧新闻",
-                    "source": "源A",
+                    "title": "???",
+                    "source": "?A",
                     "url": "https://a",
                     "published_at": "2026-07-14 09:00:00",
                     "symbols": ["600519"],
                     "summary": "",
                 },
                 {
-                    "title": "重复新闻",
-                    "source": "源A",
+                    "title": "????",
+                    "source": "?A",
                     "url": "https://dup",
                     "published_at": "2026-07-14 10:00:00",
                     "symbols": ["600519"],
                     "summary": "",
                 },
-            ], False),
+            ], "fresh", "2026-07-14 11:00:00"),
             ([
                 {
-                    "title": "重复新闻",
-                    "source": "源B",
+                    "title": "????",
+                    "source": "?B",
                     "url": "https://dup",
                     "published_at": "2026-07-14 10:00:00",
                     "symbols": ["000001"],
                     "summary": "",
                 },
                 {
-                    "title": "新新闻",
-                    "source": "源B",
+                    "title": "???",
+                    "source": "?B",
                     "url": "https://b",
                     "published_at": "2026-07-14 11:00:00",
                     "symbols": ["000001"],
                     "summary": "",
                 },
-            ], False),
+            ], "fresh", "2026-07-14 11:05:00"),
         ]
 
-        items, total, message = news_service.get_news(["600519", "000001"], limit=10, page=1)
+        items, total, meta = news_service.get_news(["600519", "000001"], limit=10, page=1)
 
         self.assertEqual(total, 3)
-        self.assertIsNone(message)
-        self.assertEqual([item["title"] for item in items], ["新新闻", "重复新闻", "旧新闻"])
+        self.assertEqual(meta["status"], "ok")
+        self.assertEqual(meta["latest_published_at"], "2026-07-14 11:00:00")
+        self.assertEqual([item["title"] for item in items], ["???", "????", "???"])
+
+    @patch("aqt.services.news_service._fetch_symbol_news")
+    def test_get_news_marks_stale_cache_when_provider_fails(self, mocked_fetch):
+        mocked_fetch.side_effect = [
+            ([
+                {
+                    "title": "????",
+                    "source": "?A",
+                    "url": "https://a",
+                    "published_at": "2026-07-14 15:00:00",
+                    "symbols": ["600519"],
+                    "summary": "",
+                },
+            ], "stale_cache", "2026-07-14 15:30:00"),
+            ([], "failed", None),
+        ]
+
+        items, total, meta = news_service.get_news(["600519", "000001"], limit=10, page=1)
+
+        self.assertEqual(total, 1)
+        self.assertEqual(meta["status"], "stale_cache")
+        self.assertEqual(meta["stale_symbols"], ["600519"])
+        self.assertEqual(meta["failed_symbols"], 1)
+        self.assertEqual(items[0]["title"], "????")
+
 
 
 class ReportServiceTests(unittest.TestCase):
@@ -189,6 +215,7 @@ class DataFetcherTests(unittest.TestCase):
     def tearDown(self):
         data_fetcher._daily_cache.clear()
         data_fetcher._daily_disk.clear()
+        data_fetcher._realtime_cache.clear()
 
     def test_fetch_daily_cached_uses_disk_without_network(self):
         data_fetcher._daily_disk["600519"] = [
@@ -202,6 +229,22 @@ class DataFetcherTests(unittest.TestCase):
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
         self.assertEqual(float(df.iloc[-1]["close"]), 2.0)
+
+    @patch("aqt.data_fetcher._tencent_realtime_batch")
+    @patch("aqt.data_fetcher.fetch_realtime", side_effect=AssertionError("should not hit per-symbol network fallback"))
+    def test_fetch_realtime_batch_fast_uses_cached_daily_snapshot(self, mocked_fetch_realtime, mocked_batch):
+        mocked_batch.return_value = {}
+        data_fetcher._daily_disk["600519"] = [
+            {"date": "2026-07-14", "open": 10, "high": 12, "low": 9, "close": 10.0, "volume": 100},
+            {"date": "2026-07-15", "open": 10.2, "high": 12.4, "low": 10, "close": 11.0, "volume": 120},
+        ]
+
+        quotes = data_fetcher.fetch_realtime_batch_fast(["600519"])
+
+        self.assertIn("600519", quotes)
+        self.assertEqual(quotes["600519"]["last_price"], 11.0)
+        self.assertEqual(quotes["600519"]["change_pct"], 10.0)
+        mocked_fetch_realtime.assert_not_called()
 
 
 if __name__ == "__main__":
